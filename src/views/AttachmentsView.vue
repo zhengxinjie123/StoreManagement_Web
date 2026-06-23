@@ -171,14 +171,14 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="供应商中文名">
+        <el-table-column label="供应商中文名" width="140" show-overflow-tooltip>
           <template #default="{ row }">
             <span>
               {{ row.supplierChineseName }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="供应商外文名">
+        <el-table-column label="供应商外文名" width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <span>
               {{ row.supplierForeignName }}
@@ -206,25 +206,14 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" align="center" fixed="right">
+        <el-table-column label="操作" width="180" align="center" fixed="right">
           <template #default="{ row }">
             <div class="table-actions">
-              <el-button link type="primary" @click="openAttachmentDetail(row)">详情</el-button>
-              <el-dropdown trigger="click" @command="(command: RowAction) => handleRowAction(command, row)">
-                <el-button link type="primary" :loading="cleaningUuid === row.uuid">
-                  更多
-                  <el-icon class="action-dropdown-icon"><ArrowDown /></el-icon>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="clean">清洗</el-dropdown-item>
-                    <el-dropdown-item command="import">导入</el-dropdown-item>
-                    <el-dropdown-item command="delete" divided :disabled="!row.deletable">
-                      <span :class="{ 'action-danger': row.deletable }">删除</span>
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <el-button link type="primary" :loading="cleaningUuid === row.uuid" @click="clean(row)">
+                清洗
+              </el-button>
+              <el-button link type="success" @click="importToTalent(row)">导入</el-button>
+              <el-button link type="danger" :disabled="!row.deletable" @click="remove(row)">删除</el-button>
             </div>
           </template>
         </el-table-column>
@@ -243,12 +232,6 @@
         />
       </div>
     </el-card>
-
-    <ReadonlyDetailDialog
-      v-model:visible="detailVisible"
-      title="电子发票详情"
-      :items="attachmentDetailItems"
-    />
 
     <el-dialog v-model="cleanDialogVisible" title="选择清洗模板" width="420px" destroy-on-close>
       <p class="clean-dialog-hint">
@@ -269,8 +252,159 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="cleanDialogVisible = false">取消</el-button>
+        <el-button @click="cancelCleanTemplate">取消</el-button>
         <el-button type="primary" :disabled="!cleanTemplateId" @click="confirmClean">开始清洗</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="previewTemplateDialogVisible"
+      title="选择清洗模板"
+      width="420px"
+      destroy-on-close
+    >
+      <p class="clean-dialog-hint">该供应商存在多个模板，请选择用于本次预览清洗的模板。</p>
+      <el-form label-width="80px">
+        <el-form-item label="模板">
+          <el-select v-model="previewTemplateId" filterable placeholder="请选择模板" style="width: 100%">
+            <el-option
+              v-for="item in previewTemplateOptions"
+              :key="item.id"
+              :label="itemLabel(item)"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="cancelCleanTemplate">取消</el-button>
+        <el-button type="primary" :disabled="!previewTemplateId" @click="confirmPreviewTemplate">
+          开始清洗
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="previewVisible"
+      title="清洗预览"
+      width="1080px"
+      top="6vh"
+      class="preview-dialog"
+      destroy-on-close
+    >
+      <div v-loading="previewLoading" class="preview-body">
+        <div v-if="previewData" class="preview-head">
+          <div class="preview-head-line">
+            <span class="preview-template">{{ previewData.templateName }}</span>
+            <el-tag size="small" :type="previewData.taxIncluded ? 'warning' : 'info'" effect="light">
+              {{ previewData.taxIncluded ? '含税' : '不含税' }}
+            </el-tag>
+            <span class="preview-manual-hint">
+              需人工核对 {{ manualAdjustmentCount }} 行：黄色行可编辑条码 / 名称，确认不需要的可点「不归档」
+            </span>
+          </div>
+
+          <div class="preview-summary">
+            <div class="summary-card" :class="{ 'summary-card--error': previewAmountMismatch }">
+              <span class="summary-label">折前金额</span>
+              <span class="summary-value">{{ formatMoney(previewAmountBeforeDiscount) }}</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">折扣额</span>
+              <span class="summary-value">{{ formatMoney(previewDiscountAmount) }}</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">总金额</span>
+              <span class="summary-value">{{ formatMoney(previewTotalAmount) }}</span>
+            </div>
+            <div class="summary-card">
+              <span class="summary-label">总数量</span>
+              <span class="summary-value">{{ formatQuantity(previewTotalQuantity) }}</span>
+            </div>
+          </div>
+
+          <el-alert
+            v-if="previewAmountMismatch"
+            type="error"
+            :closable="false"
+            show-icon
+            class="preview-alert"
+          >
+            页脚折前金额 {{ formatMoney(previewData.footerAmountBeforeDiscount) }} 与表格折前金额
+            {{ formatMoney(previewAmountBeforeDiscount) }} 不一致，请核对明细。
+          </el-alert>
+        </div>
+
+        <div class="preview-table-wrap">
+          <el-table
+            :data="previewRows"
+            border
+            size="small"
+            :height="previewTableHeight"
+            :row-class-name="previewRowClassName"
+          >
+          <el-table-column label="原行号" prop="sourceRowIndex" width="72" align="center" />
+          <el-table-column label="条码" min-width="145">
+            <template #default="{ row }">
+              <el-input v-if="row.filtered" v-model="row.barcode" size="small" />
+              <span v-else>{{ row.barcode || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="外文名" min-width="240">
+            <template #default="{ row }">
+              <el-input v-if="row.filtered" v-model="row.foreignName" size="small" />
+              <span v-else>{{ row.foreignName || row.chineseName || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="数量" width="72" align="right">
+            <template #default="{ row }">
+              <span>{{ formatQuantity(row.quantity) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="进价" width="82" align="right">
+            <template #default="{ row }">
+              <span>{{ formatMoney(row.outputPrice) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="税率" width="68" align="right">
+            <template #default="{ row }">
+              <span>{{ formatQuantity(row.taxRate) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="行金额" width="92" align="right">
+            <template #default="{ row }">
+              <span>{{ formatMoney(previewLineAmount(row)) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="120" align="center">
+            <template #default="{ row }">
+              <el-tag v-if="row.filtered" type="warning" effect="light" size="small">
+                {{ row.filterReasonName || '已过滤' }}
+              </el-tag>
+              <el-tag v-else type="success" effect="light" size="small">保留</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-button v-if="row.filtered" link type="danger" @click="excludePreviewRow(row)">
+                不归档
+              </el-button>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="cancelPreviewClean">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="confirmArchiving"
+          :disabled="previewLoading"
+          @click="confirmArchivePreview"
+        >
+          确认归档
+        </el-button>
       </template>
     </el-dialog>
   </div>
@@ -278,34 +412,33 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { ArrowDown } from '@element-plus/icons-vue'
 import { useTableMaxHeight } from '../utils/layout'
-import ReadonlyDetailDialog, { type DetailItem } from '../components/ReadonlyDetailDialog.vue'
 import { ElMessage, ElMessageBox, type TableInstance, type UploadFile, type UploadInstance } from 'element-plus'
 import {
   type AttachmentOwnerType,
   attachmentDownloadUrl,
   batchUploadAttachments,
-  cleanAttachment,
+  confirmCleanAttachment,
   deleteAttachment,
   fetchAllAttachments,
   getAttachments,
   matchSuppliersByFileName,
   uploadAttachment,
 } from '../api/attachments'
-import { getInvoiceTemplatesBySupplier } from '../api/invoiceTemplate'
+import { getInvoiceTemplatesBySupplier, previewInvoiceTemplate } from '../api/invoiceTemplate'
 import { getSupplierOptions } from '../api/talent'
-import type { Attachment, InvoiceTemplate, SupplierOption } from '../types/api'
+import type {
+  Attachment,
+  InvoiceCleanPreview,
+  InvoiceCleanPreviewRow,
+  InvoiceTemplate,
+  SupplierOption,
+} from '../types/api'
 import dayjs from 'dayjs'
-
-
-type RowAction = 'clean' | 'import' | 'delete'
 
 const tableShellRef = ref<HTMLElement | null>(null)
 const tableRef = ref<TableInstance>()
 const { tableMaxHeight, recalc: recalcTableHeight } = useTableMaxHeight(tableShellRef)
-const detailVisible = ref(false)
-const detailAttachment = ref<Attachment | null>(null)
 
 const uploadRef = ref<UploadInstance>()
 const batchInputRef = ref<HTMLInputElement>()
@@ -329,6 +462,18 @@ const loading = ref(false)
 const total = ref(0)
 const attachments = ref<Attachment[]>([])
 const suppliers = ref<SupplierOption[]>([])
+
+// 单条清洗预览流程
+const previewVisible = ref(false)
+const previewLoading = ref(false)
+const confirmArchiving = ref(false)
+const previewData = ref<InvoiceCleanPreview | null>(null)
+const previewRows = ref<InvoiceCleanPreviewRow[]>([])
+const previewTarget = ref<Attachment | null>(null)
+const previewTemplateId = ref<number | null>(null)
+const previewTemplateDialogVisible = ref(false)
+const previewTemplateOptions = ref<InvoiceTemplate[]>([])
+const pendingCleanQueue = ref<Attachment[]>([])
 
 interface BatchUploadRow {
   id: string
@@ -540,7 +685,293 @@ const clean = async (row: Attachment) => {
     ElMessage.warning('仅支持 Excel 电子发票清洗')
     return
   }
-  await cleanRows([row])
+  await startCleanQueue([row])
+}
+
+const confirmPreviewTemplate = async () => {
+  if (!previewTarget.value || !previewTemplateId.value) return
+  const target = previewTarget.value
+  const templateId = previewTemplateId.value
+  previewTemplateDialogVisible.value = false
+  await runClean(target, templateId)
+}
+
+const cancelCleanTemplate = () => {
+  cleanDialogVisible.value = false
+  previewTemplateDialogVisible.value = false
+  cleanTarget.value = null
+  previewTarget.value = null
+  cleanQueue.value = []
+  pendingCleanQueue.value = []
+}
+
+const startCleanQueue = async (rows: Attachment[]) => {
+  pendingCleanQueue.value = [...rows]
+  await processNextClean()
+}
+
+const processNextClean = async () => {
+  const row = pendingCleanQueue.value.shift()
+  if (!row) {
+    await loadAttachments()
+    return
+  }
+
+  if (!isExcelAttachment(row)) {
+    await processNextClean()
+    return
+  }
+
+  let templates: InvoiceTemplate[] = []
+  try {
+    templates = await getInvoiceTemplatesBySupplier(row.supplierGuid)
+  } catch {
+    pendingCleanQueue.value = []
+    return
+  }
+
+  if (templates.length === 0) {
+    ElMessage.warning(`「${fullFilename(row)}」的供应商尚未配置清洗模板`)
+    await processNextClean()
+    return
+  }
+
+  if (templates.length === 1) {
+    const result = await runClean(row, templates[0].id)
+    if (result === 'archived') {
+      await processNextClean()
+    }
+    return
+  }
+
+  cleanQueue.value = [row, ...pendingCleanQueue.value]
+  cleanTarget.value = row
+  previewTarget.value = row
+  cleanTemplateOptions.value = templates
+  previewTemplateOptions.value = templates
+  cleanTemplateId.value = templates[0].id
+  previewTemplateId.value = templates[0].id
+  cleanDialogVisible.value = true
+}
+
+type CleanRunResult = 'archived' | 'paused' | 'cancelled' | 'failed'
+
+const runClean = async (row: Attachment, templateId: number): Promise<CleanRunResult> => {
+  if (row.cleanStatus === 'CLEANED') {
+    try {
+      await ElMessageBox.confirm(
+        `「${fullFilename(row)}」已清洗过，确定重新清洗吗？`,
+        '重新清洗确认',
+        { type: 'warning', confirmButtonText: '重新清洗', cancelButtonText: '取消' },
+      )
+    } catch {
+      pendingCleanQueue.value = []
+      return 'cancelled'
+    }
+  }
+
+  previewTarget.value = row
+  previewTemplateId.value = templateId
+  previewData.value = null
+  previewRows.value = []
+  cleaningUuid.value = row.uuid
+  try {
+    const data = await previewInvoiceTemplate(templateId, row.uuid, row.supplierGuid)
+    const rows = data.rows.map((item) => ({ ...item }))
+    if (hasManualAdjustment(rows)) {
+      previewData.value = data
+      previewRows.value = rows
+      previewVisible.value = true
+      ElMessage.warning(`「${fullFilename(row)}」存在 ${rows.filter((item) => item.filtered).length} 行需要人工调整`)
+      return 'paused'
+    }
+
+    await archiveCleanResult(row, data, rows, { silent: false })
+    return 'archived'
+  } catch {
+    pendingCleanQueue.value = []
+    return 'failed'
+  } finally {
+    cleaningUuid.value = ''
+  }
+}
+
+const previewRowClassName = ({ row }: { row: InvoiceCleanPreviewRow }) =>
+  row.filtered ? 'preview-row-filtered' : ''
+
+const hasManualAdjustment = (rows: InvoiceCleanPreviewRow[]) => rows.some((row) => row.filtered)
+
+const excludePreviewRow = (row: InvoiceCleanPreviewRow) => {
+  const index = previewRows.value.indexOf(row)
+  if (index === -1) {
+    return
+  }
+  previewRows.value.splice(index, 1)
+  ElMessage.info(`已将原发票第 ${row.sourceRowIndex} 行从本次归档中排除`)
+}
+
+const toNumber = (value: number | null | undefined) =>
+  value === null || value === undefined || Number.isNaN(Number(value)) ? 0 : Number(value)
+
+const archivePreviewRows = computed(() => previewRows.value)
+const manualAdjustmentCount = computed(() =>
+  previewRows.value.filter((row) => row.filtered).length,
+)
+
+// 预览编辑的目的在于把过滤行补齐后归档，因此汇总跟随当前表格行实时变化。
+const previewTotalQuantity = computed(() =>
+  archivePreviewRows.value.reduce((sum, row) => sum + toNumber(row.quantity), 0),
+)
+const previewAmountBeforeDiscount = computed(() =>
+  archivePreviewRows.value.reduce(
+    (sum, row) => sum + previewLineAmount(row),
+    0,
+  ),
+)
+const previewTotalAmount = computed(() => {
+  const data = previewData.value
+  if (!data) return 0
+  if (data.footerParsed) {
+    return toNumber(data.summary.totalAmount)
+  }
+  return previewAmountBeforeDiscount.value - toNumber(data.summary.discountAmount)
+})
+const previewDiscountAmount = computed(() => {
+  const data = previewData.value
+  if (!data) return 0
+  if (data.footerParsed) {
+    return Math.max(previewAmountBeforeDiscount.value - previewTotalAmount.value, 0)
+  }
+  return toNumber(data.summary.discountAmount)
+})
+
+// 过滤行编辑后，使用当前表格折前金额重新与页脚折前金额比较。
+const previewAmountMismatch = computed(() => {
+  const data = previewData.value
+  if (!data?.footerParsed || data.footerAmountBeforeDiscount === null) {
+    return false
+  }
+  return Math.abs(toNumber(data.footerAmountBeforeDiscount) - previewAmountBeforeDiscount.value) > 0.01
+})
+
+const previewTableHeight = computed(() =>
+  previewAmountMismatch.value ? 'calc(68vh - 120px)' : 'calc(68vh - 84px)',
+)
+
+const formatMoney = (value: number | null | undefined) => {
+  const num = toNumber(value)
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+const formatQuantity = (value: number | null | undefined) => {
+  const num = toNumber(value)
+  return Number.isInteger(num) ? String(num) : num.toString()
+}
+
+const previewLineAmount = (row: InvoiceCleanPreviewRow) =>
+  toNumber(row.outputPrice) * toNumber(row.quantity)
+
+const totalQuantityOf = (rows: InvoiceCleanPreviewRow[]) =>
+  rows.reduce((sum, row) => sum + toNumber(row.quantity), 0)
+
+const amountBeforeDiscountOf = (rows: InvoiceCleanPreviewRow[]) =>
+  rows.reduce((sum, row) => sum + previewLineAmount(row), 0)
+
+const discountAmountOf = (data: InvoiceCleanPreview, rows: InvoiceCleanPreviewRow[]) => {
+  if (data.footerParsed) {
+    return Math.max(amountBeforeDiscountOf(rows) - totalAmountOf(data, rows), 0)
+  }
+  return toNumber(data.summary.discountAmount)
+}
+
+const totalAmountOf = (data: InvoiceCleanPreview, rows: InvoiceCleanPreviewRow[]) => {
+  if (data.footerParsed) {
+    return toNumber(data.summary.totalAmount)
+  }
+  return amountBeforeDiscountOf(rows) - toNumber(data.summary.discountAmount)
+}
+
+const archiveCleanResult = async (
+  target: Attachment,
+  data: InvoiceCleanPreview,
+  rows: InvoiceCleanPreviewRow[],
+  options?: { silent?: boolean },
+) => {
+  const archive = await confirmCleanAttachment(target.uuid, {
+    supplierGuid: target.supplierGuid,
+    rows: rows.map((row) => ({
+      barcode: row.barcode,
+      foreignName: row.foreignName ?? '',
+      quantity: row.quantity,
+      outputPrice: row.outputPrice,
+      taxRate: row.taxRate,
+    })),
+    summary: {
+      totalQuantity: totalQuantityOf(rows),
+      amountBeforeDiscount: amountBeforeDiscountOf(rows),
+      discountAmount: discountAmountOf(data, rows),
+      totalAmount: totalAmountOf(data, rows),
+      taxIncluded: data.taxIncluded,
+      remark: data.summary.remark ?? null,
+    },
+  })
+  if (!options?.silent) {
+    ElMessage.success(`归档成功，归档文件：${archive.fileName}.${archive.extensionName}`)
+  }
+  target.cleanStatus = 'CLEANED'
+  target.cleanStatusName = '已清洗'
+}
+
+const cancelPreviewClean = () => {
+  previewVisible.value = false
+  previewData.value = null
+  previewRows.value = []
+  previewTarget.value = null
+  pendingCleanQueue.value = []
+}
+
+const confirmArchivePreview = async () => {
+  const target = previewTarget.value
+  const data = previewData.value
+  if (!target || !data) return
+  if (!archivePreviewRows.value.length) {
+    ElMessage.warning('没有可归档的有效明细')
+    return
+  }
+  const invalidRow = archivePreviewRows.value.find((row) =>
+    !row.barcode || !row.foreignName,
+  )
+  if (invalidRow) {
+    ElMessage.warning(`请补齐原发票第 ${invalidRow.sourceRowIndex} 行的条码和外文名`)
+    return
+  }
+
+  if (previewAmountMismatch.value) {
+    try {
+      await ElMessageBox.confirm(
+        '页脚折前金额与表格折前金额不一致，仍要确认归档吗？',
+        '金额不一致提醒',
+        { type: 'warning', confirmButtonText: '继续归档', cancelButtonText: '返回修改' },
+      )
+    } catch {
+      return
+    }
+  }
+
+  confirmArchiving.value = true
+  try {
+    await archiveCleanResult(target, data, archivePreviewRows.value)
+    previewVisible.value = false
+    if (pendingCleanQueue.value.length > 0) {
+      await processNextClean()
+      return
+    }
+    await loadAttachments()
+  } catch {
+    // 错误已由 http 拦截器提示
+  } finally {
+    confirmArchiving.value = false
+  }
 }
 
 const batchClean = async () => {
@@ -554,7 +985,7 @@ const batchClean = async () => {
   }
   batchCleaning.value = true
   try {
-    await cleanRows(excelRows)
+    await startCleanQueue(excelRows)
   } finally {
     batchCleaning.value = false
   }
@@ -587,7 +1018,7 @@ const oneClickClean = async () => {
       return
     }
     batchCleaning.value = true
-    await cleanRows(excelRows)
+    await startCleanQueue(excelRows)
   } finally {
     oneClickCleaning.value = false
     batchCleaning.value = false
@@ -638,56 +1069,6 @@ const oneClickImport = async () => {
   }
 }
 
-const handleRowAction = (command: RowAction, row: Attachment) => {
-  if (command === 'clean') {
-    clean(row)
-    return
-  }
-  if (command === 'import') {
-    importToTalent(row)
-    return
-  }
-  if (command === 'delete') {
-    remove(row)
-  }
-}
-
-const cleanRows = async (rows: Attachment[]) => {
-  for (const row of rows) {
-    if (!['xls', 'xlsx'].includes(row.extensionName.toLowerCase())) {
-      continue
-    }
-
-    let templates: InvoiceTemplate[] = []
-    try {
-      templates = await getInvoiceTemplatesBySupplier(row.supplierGuid)
-    } catch {
-      return
-    }
-
-    if (templates.length === 0) {
-      ElMessage.warning(`「${fullFilename(row)}」的供应商尚未配置清洗模板`)
-      continue
-    }
-
-    if (templates.length === 1) {
-      const success = await runClean(row, templates[0].id)
-      if (!success) {
-        return
-      }
-      continue
-    }
-
-    cleanQueue.value = rows.slice(rows.indexOf(row))
-    cleanTarget.value = row
-    cleanTemplateOptions.value = templates
-    cleanTemplateId.value = templates[0].id
-    cleanDialogVisible.value = true
-    return
-  }
-  await loadAttachments()
-}
-
 const itemLabel = (item: InvoiceTemplate) => {
   const tags = [item.name]
   if (item.enabled) tags.push('启用')
@@ -697,52 +1078,13 @@ const itemLabel = (item: InvoiceTemplate) => {
 const confirmClean = async () => {
   if (!cleanTarget.value || !cleanTemplateId.value) return
   const target = cleanTarget.value
-  const remaining = cleanQueue.value
   cleanDialogVisible.value = false
   cleanTarget.value = null
   cleanQueue.value = []
 
-  const success = await runClean(target, cleanTemplateId.value)
-  if (!success) {
-    return
-  }
-
-  const nextIndex = remaining.indexOf(target) + 1
-  if (nextIndex < remaining.length) {
-    await cleanRows(remaining.slice(nextIndex))
-    return
-  }
-  await loadAttachments()
-}
-
-const runClean = async (row: Attachment, templateId: number): Promise<boolean> => {
-  if (row.cleanStatus === 'CLEANED') {
-    try {
-      await ElMessageBox.confirm(
-        `「${fullFilename(row)}」已清洗过，确定重新清洗吗？`,
-        '重新清洗确认',
-        {
-          type: 'warning',
-          confirmButtonText: '重新清洗',
-          cancelButtonText: '取消',
-        },
-      )
-    } catch {
-      return false
-    }
-  }
-
-  cleaningUuid.value = row.uuid
-  try {
-    const archive = await cleanAttachment(row.uuid, row.supplierGuid, templateId)
-    ElMessage.success(`清洗成功，归档文件：${archive.fileName}.${archive.extensionName}`)
-    row.cleanStatus = 'CLEANED'
-    row.cleanStatusName = '已清洗'
-    return true
-  } catch {
-    return false
-  } finally {
-    cleaningUuid.value = ''
+  const result = await runClean(target, cleanTemplateId.value)
+  if (result === 'archived') {
+    await processNextClean()
   }
 }
 
@@ -812,47 +1154,12 @@ const download = (row: Attachment) => {
 
 const fullFilename = (row: Attachment) => `${row.fileName}.${row.extensionName}`
 
-const attachmentDetailItems = computed<DetailItem[]>(() => {
-  const row = detailAttachment.value
-  if (!row) return []
-  return [
-    { label: '文件名', value: fullFilename(row) },
-    { label: '文件大小', value: formatSize(row.fileSize) },
-    { label: '上传日期', value: formatDateTime(row.uploadDate) },
-    { label: '供应商中文名', value: row.supplierChineseName || '-' },
-    { label: '供应商外文名', value: row.supplierForeignName || '-' },
-    { label: '所属人员', value: row.ownerTypeName || '-' },
-    { label: '清洗状态', value: row.cleanStatusName || '-' },
-    { label: '导入状态', value: row.importStatusName },
-  ]
-})
-
-const openAttachmentDetail = (row: Attachment) => {
-  detailAttachment.value = row
-  detailVisible.value = true
-}
-
 const supplierLabel = (supplier: SupplierOption) =>
   [supplier.chineseName, supplier.foreignName].filter(Boolean).join(' / ')
-
-const formatSize = (size: number) => {
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / 1024 / 1024).toFixed(1)} MB`
-}
 
 const isAllowedInvoiceFile = (filename: string) =>
   ['xls', 'xlsx', 'pdf'].includes(filename.split('.').pop()?.toLowerCase() || '')
 
-const formatDateTime = (value: string) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-
-  const pad = (num: number) => String(num).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
-    + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
 
 const statusTagType = (status: Attachment['importStatus']) => {
   if (status === 'SUCCESS') return 'success'
@@ -895,12 +1202,12 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   margin: 0 0 0 8px;
-  max-width: 220px;
+  min-width: 220px;
 }
 
 .inline-upload :deep(.el-upload-list__item) {
   margin: 0;
-  max-width: 220px;
+  min-width: 220px;
 }
 
 .inline-upload :deep(.el-upload-list__item-name) {
@@ -1002,5 +1309,92 @@ onMounted(async () => {
   margin: 0 0 16px;
   color: #606266;
   font-size: 12px;
+}
+
+.preview-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 68vh;
+}
+
+.preview-head {
+  flex-shrink: 0;
+}
+
+.preview-head-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #606266;
+}
+
+.preview-template {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.preview-manual-hint {
+  color: var(--el-color-warning);
+}
+
+.preview-table-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 120px;
+  padding: 6px 10px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  background: var(--el-fill-color-light);
+}
+
+.summary-card--error {
+  border-color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+}
+
+.summary-card--error .summary-value {
+  color: var(--el-color-danger);
+}
+
+.summary-label {
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 2px;
+}
+
+.summary-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.preview-alert {
+  margin-bottom: 8px;
+}
+
+.preview-body :deep(.preview-row-filtered) {
+  --el-table-tr-bg-color: #fff8e1;
+}
+
+.preview-body :deep(.preview-row-filtered:hover > td.el-table__cell) {
+  background-color: #fdf0c2 !important;
 }
 </style>

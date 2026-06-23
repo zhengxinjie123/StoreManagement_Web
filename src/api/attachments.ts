@@ -1,5 +1,12 @@
 import { request } from './http'
-import type { Attachment, BatchUploadResult, BatchUploadSupplierMatch, InvoiceArchive, PageResponse } from '../types/api'
+import type {
+  Attachment,
+  BatchUploadResult,
+  BatchUploadSupplierMatch,
+  InvoiceArchive,
+  InvoiceCleanConfirmPayload,
+  PageResponse,
+} from '../types/api'
 
 export type AttachmentOwnerType = 'SELF' | 'PARENT'
 export type AttachmentCleanStatus = 'NOT_CLEANED' | 'CLEANED'
@@ -91,4 +98,12 @@ export const cleanAttachment = (uuid: string, supplierGuid: string, templateId: 
     url: `/importAttachment/${uuid}/clean`,
     method: 'POST',
     params: { supplierGuid, templateId },
+  })
+
+/** 预览确认后归档（携带前端编辑后的明细行与汇总） */
+export const confirmCleanAttachment = (uuid: string, payload: InvoiceCleanConfirmPayload) =>
+  request<InvoiceArchive>({
+    url: `/importAttachment/${uuid}/clean/confirm`,
+    method: 'POST',
+    data: payload,
   })

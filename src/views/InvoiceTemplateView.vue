@@ -10,7 +10,7 @@
         <el-button type="primary" @click="openCreate">新建模板</el-button>
       </div>
 
-      <div ref="cardListShellRef" v-loading="loading" class="template-card-shell">
+      <div v-loading="loading" class="template-card-shell">
         <el-empty v-if="!loading && templates.length === 0" description="暂无清洗模板" />
         <div v-else class="template-card-grid">
           <el-card v-for="row in templates" :key="row.id" shadow="hover" class="template-card">
@@ -26,6 +26,9 @@
             </div>
             <div class="template-card-mapping" :title="columnMappingText(row)">
               {{ columnMappingText(row) }}
+            </div>
+            <div class="template-card-rule" :title="ruleSummaryText(row)">
+              {{ ruleSummaryText(row) }}
             </div>
             <div class="template-card-footer">
               <span class="template-card-time">{{ formatDateTime(row.updatedAt) }}</span>
@@ -165,6 +168,60 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-divider content-position="left">清洗规则</el-divider>
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <el-form-item label="过滤无条码" label-width="88px">
+              <el-switch v-model="form.filterRowsWithoutBarcode" inline-prompt active-text="是" inactive-text="否" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="混合品名拆分" label-width="98px">
+              <el-switch v-model="form.splitMixedChineseForeignName" inline-prompt active-text="是" inactive-text="否" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="替换货币金额" label-width="100px">
+              <el-switch v-model="form.stripCurrencyFromPrice" inline-prompt active-text="是" inactive-text="否" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <el-form-item label="跳过PALLET行" label-width="100px">
+              <el-switch v-model="form.skipZeroPricePalletRows" inline-prompt active-text="是" inactive-text="否" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="页脚Base停扫" label-width="100px">
+              <el-switch v-model="form.breakOnTaxableBase" inline-prompt active-text="是" inactive-text="否" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="过滤非EAN13条码" label-width="120px">
+              <el-switch v-model="form.skipBarcodeNotEAN13" inline-prompt active-text="是" inactive-text="否" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <el-form-item label="新条码备注" label-width="88px">
+              <el-switch v-model="form.productHasNewBarcode" inline-prompt active-text="是" inactive-text="否" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="页脚解析" label-width="76px">
+              <el-select v-model="form.footerSummaryMode" style="width: 100%">
+                <el-option
+                  v-for="item in footerSummaryModeOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="2" />
         </el-form-item>
@@ -215,20 +272,25 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import ReadonlyDetailDialog, { type DetailItem } from '../components/ReadonlyDetailDialog.vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { getAttachments } from '../api/attachments'
 import {
   createInvoiceTemplate,
-  deleteInvoiceTemplate,
   getInvoiceTemplates,
   previewInvoiceTemplate,
   updateInvoiceTemplate,
 } from '../api/invoiceTemplate'
 import { getSupplierOptions } from '../api/talent'
-import type { Attachment, InvoiceCleanPreview, InvoiceTemplate, InvoiceTemplateForm, SupplierOption } from '../types/api'
+import type {
+  Attachment,
+  FooterSummaryMode,
+  InvoiceCleanPreview,
+  InvoiceTemplate,
+  InvoiceTemplateForm,
+  SupplierOption,
+} from '../types/api'
 import { formatDateTime, formatMoney, formatQuantity, supplierLabel } from '../utils/display'
 
-const cardListShellRef = ref<HTMLElement | null>(null)
 const detailVisible = ref(false)
 const detailTemplate = ref<InvoiceTemplate | null>(null)
 
@@ -260,6 +322,11 @@ const excelColumns = (() => {
   return cols
 })()
 
+const footerSummaryModeOptions: Array<{ label: string, value: FooterSummaryMode }> = [
+  { label: '不解析', value: 'NONE' },
+  { label: 'Sub Total + Dto. Total', value: 'SUB_TOTAL_DTO' },
+]
+
 const query = reactive({
   current: 1,
   pageSize: 12,
@@ -283,6 +350,14 @@ const defaultForm = (): InvoiceTemplateForm => ({
   lineSubtotalCol: '',
   defaultTaxRate: 23,
   taxIncluded: false,
+  filterRowsWithoutBarcode: true,
+  splitMixedChineseForeignName: false,
+  stripCurrencyFromPrice: false,
+  skipZeroPricePalletRows: false,
+  breakOnTaxableBase: false,
+  productHasNewBarcode: false,
+  skipBarcodeNotEAN13: false,
+  footerSummaryMode: 'NONE',
   enabled: false,
   remark: '',
 })
@@ -333,6 +408,20 @@ const columnMappingText = (row: InvoiceTemplate) =>
     row.lineSubtotalCol ? `行小计${row.lineSubtotalCol}` : null,
   ].filter(Boolean).join(' · ')
 
+const ruleSummaryText = (row: InvoiceTemplate) => {
+  const rules = [
+    row.filterRowsWithoutBarcode ? '过滤无条码' : null,
+    row.splitMixedChineseForeignName ? '混合品名拆分' : null,
+    row.stripCurrencyFromPrice ? '货币金额' : null,
+    row.skipZeroPricePalletRows ? '跳过PALLET' : null,
+    row.breakOnTaxableBase ? 'Base停扫' : null,
+    row.productHasNewBarcode ? '新条码备注' : null,
+    row.skipBarcodeNotEAN13 ? '过滤非EAN13' : null,
+    row.footerSummaryMode === 'SUB_TOTAL_DTO' ? '页脚Sub/Dto' : null,
+  ].filter(Boolean)
+  return rules.length ? rules.join(' · ') : '标准清洗规则'
+}
+
 const templateDetailItems = computed<DetailItem[]>(() => {
   const row = detailTemplate.value
   if (!row) return []
@@ -342,6 +431,7 @@ const templateDetailItems = computed<DetailItem[]>(() => {
     { label: '表头行 / 数据起始行', value: `${row.headerRow} / ${row.dataStartRow}` },
     { label: 'Sheet 名称', value: row.sheetName || '-' },
     { label: '列映射', value: columnMappingText(row) },
+    { label: '清洗规则', value: ruleSummaryText(row), wrap: true },
     { label: '默认税率', value: row.defaultTaxRate == null ? '-' : `${row.defaultTaxRate}%` },
     { label: '含税入库', value: row.taxIncluded ? '含税' : '不含税' },
     { label: '备注', value: row.remark || '-' },
@@ -387,6 +477,14 @@ const openEdit = (row: InvoiceTemplate) => {
     lineSubtotalCol: row.lineSubtotalCol ?? '',
     defaultTaxRate: row.defaultTaxRate ?? 23,
     taxIncluded: row.taxIncluded ?? false,
+    filterRowsWithoutBarcode: row.filterRowsWithoutBarcode ?? true,
+    splitMixedChineseForeignName: row.splitMixedChineseForeignName ?? false,
+    stripCurrencyFromPrice: row.stripCurrencyFromPrice ?? false,
+    skipZeroPricePalletRows: row.skipZeroPricePalletRows ?? false,
+    breakOnTaxableBase: row.breakOnTaxableBase ?? false,
+    productHasNewBarcode: row.productHasNewBarcode ?? false,
+    skipBarcodeNotEAN13: row.skipBarcodeNotEAN13 ?? false,
+    footerSummaryMode: row.footerSummaryMode ?? 'NONE',
     enabled: row.enabled,
     remark: row.remark ?? '',
   })
@@ -452,22 +550,6 @@ const runPreview = async () => {
   } finally {
     previewing.value = false
   }
-}
-
-
-const remove = async (row: InvoiceTemplate) => {
-  try {
-    await ElMessageBox.confirm(`确定删除模板「${row.name}」吗？`, '删除确认', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-    })
-  } catch {
-    return
-  }
-  await deleteInvoiceTemplate(row.id)
-  ElMessage.success('删除成功')
-  await loadTemplates()
 }
 
 const loadTemplates = async () => {
@@ -562,6 +644,14 @@ onMounted(async () => {
   -webkit-box-orient: vertical;
   overflow: hidden;
   min-height: 36px;
+}
+
+.template-card-rule {
+  font-size: 12px;
+  color: #409eff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .template-card-footer {

@@ -58,7 +58,7 @@
           <el-table-column label="操作" width="120" align="center">
             <template #default="{ row }">
               <div v-if="row.rowType === 'archive'" class="table-actions">
-                <el-button link type="primary" @click="openArchiveDetail(row)">详情</el-button>
+                <el-button link type="primary" @click="openArchivePreview(row)">预览</el-button>
                 <el-button v-if="row.deletable" link type="danger" @click="removeArchive(row)">删除</el-button>
               </div>
             </template>
@@ -71,17 +71,28 @@
           @current-change="loadSuppliers" />
       </div>
     </el-card>
-    <ReadonlyDetailDialog v-model:visible="detailVisible" title="归档详情" :items="archiveDetailItems" />
+    <ExcelPreviewDialog
+      v-model:visible="archivePreviewVisible"
+      :title="archivePreviewTitle"
+      :download-url="archivePreviewUrl"
+      :load-preview="archivePreviewLoader"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type TableInstance } from 'element-plus'
-import ReadonlyDetailDialog, { type DetailItem } from '../components/ReadonlyDetailDialog.vue'
-import { deleteInvoiceArchive, getInvoiceArchiveSuppliers, getInvoiceArchives, invoiceArchiveDownloadUrl } from '../api/invoice'
-import type { InvoiceArchive, InvoiceArchiveSupplier } from '../types/api'
-import { formatDateTime, formatMoney, formatQuantity, formatSize, supplierLabel } from '../utils/display'
+import ExcelPreviewDialog from '../components/ExcelPreviewDialog.vue'
+import {
+  deleteInvoiceArchive,
+  getInvoiceArchiveSuppliers,
+  getInvoiceArchives,
+  invoiceArchiveDownloadUrl,
+  previewInvoiceArchiveExcel,
+} from '../api/invoice'
+import type { ExcelPreview, InvoiceArchive, InvoiceArchiveSupplier } from '../types/api'
+import { formatMoney, formatQuantity, supplierLabel } from '../utils/display'
 import { useTableMaxHeight } from '../utils/layout'
 
 interface SupplierTreeRow {
@@ -109,8 +120,10 @@ const expandedSupplierIds = ref<Set<string>>(new Set())
 const keyword = ref('')
 const supplierTotal = ref(0)
 const supplierRows = ref<SupplierTreeRow[]>([])
-const detailVisible = ref(false)
-const detailArchive = ref<ArchiveTreeRow | null>(null)
+const archivePreviewVisible = ref(false)
+const archivePreviewTitle = ref('')
+const archivePreviewUrl = ref('')
+const archivePreviewLoader = ref<() => Promise<ExcelPreview>>(() => Promise.resolve({ sheets: [] }))
 
 const query = reactive({
   current: 1,
@@ -126,27 +139,11 @@ const supplierLabelOf = (supplier: InvoiceArchiveSupplier) =>
 
 const archiveFilename = (row: ArchiveTreeRow) => `${row.fileName}.${row.extensionName}`
 
-const archiveDetailItems = computed<DetailItem[]>(() => {
-  const row = detailArchive.value
-  if (!row) return []
-  return [
-    { label: '文件名', value: archiveFilename(row) },
-    { label: '供应商', value: row.supplierLabel },
-    { label: '文件大小', value: formatSize(row.fileSize) },
-    { label: '商品总数', value: formatQuantity(row.totalQuantity) },
-    { label: '折扣前金额', value: formatMoney(row.amountBeforeDiscount) },
-    { label: '折扣', value: formatMoney(row.discountAmount) },
-    { label: '总金额', value: formatMoney(row.totalAmount) },
-    { label: '是否含税', value: row.taxIncluded == null ? '-' : row.taxIncluded ? '含税' : '不含税' },
-    { label: '清洗行数', value: row.rowCount },
-    { label: '备注', value: row.remark || '-' },
-    { label: '归档时间', value: formatDateTime(row.createdAt) },
-  ]
-})
-
-const openArchiveDetail = (row: ArchiveTreeRow) => {
-  detailArchive.value = row
-  detailVisible.value = true
+const openArchivePreview = (row: ArchiveTreeRow) => {
+  archivePreviewTitle.value = `归档预览：${archiveFilename(row)}`
+  archivePreviewUrl.value = invoiceArchiveDownloadUrl(row.uuid)
+  archivePreviewLoader.value = () => previewInvoiceArchiveExcel(row.uuid)
+  archivePreviewVisible.value = true
 }
 
 const toArchiveRows = (archives: InvoiceArchive[], label: string): ArchiveTreeRow[] =>

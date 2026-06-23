@@ -126,7 +126,7 @@ body {
   border-radius: 6px;
 }
 
-.page-card--static :deep(.el-card__body) {
+.page-card--static .el-card__body {
   padding: var(--card-padding);
 }
 
@@ -142,7 +142,7 @@ body {
   flex-direction: column;
 }
 
-.page-card--grow :deep(.el-card__body) {
+.page-card--grow .el-card__body {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -154,6 +154,46 @@ body {
 .table-shell {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+/* Keep overlays themselves fixed in the viewport; only dialog bodies scroll. */
+.el-overlay {
+  overflow: hidden;
+}
+
+.el-overlay-dialog {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+}
+
+.el-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  margin: 0 !important;
+  overflow: hidden;
+}
+
+.el-dialog__header,
+.el-dialog__footer {
+  flex-shrink: 0;
+}
+
+.el-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 清洗预览弹窗：内容区不滚动，仅内部表格滚动，避免双重滚动条 */
+.preview-dialog .el-dialog__body {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 

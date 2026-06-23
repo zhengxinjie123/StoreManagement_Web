@@ -51,7 +51,6 @@ const displayValue = (item: DetailItem) => {
 
 <style>
 .dialog {
-  max-height: 75vh;
-  overflow-y: auto;
+  overflow: hidden;
 }
 </style>

@@ -1,5 +1,5 @@
 import { request } from './http'
-import type { InvoiceArchive, InvoiceArchiveSupplier, PageResponse } from '../types/api'
+import type { ExcelPreview, InvoiceArchive, InvoiceArchiveSupplier, PageResponse } from '../types/api'
 
 export interface PageQuery {
   current: number
@@ -22,3 +22,7 @@ export const deleteInvoiceArchive = (uuid: string) =>
 
 export const invoiceArchiveDownloadUrl = (uuid: string) =>
   `/api/invoiceArchive/${uuid}/download`
+
+export const previewInvoiceArchiveExcel = (uuid: string) =>
+  request<ExcelPreview>({ url: `/invoiceArchive/${uuid}/preview`, method: 'GET' })
+

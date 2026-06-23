@@ -105,6 +105,18 @@ export interface InvoiceArchiveSupplier {
   latestCreatedAt?: string
 }
 
+export interface ExcelSheetPreview {
+  name: string
+  rows: string[][]
+  truncated: boolean
+}
+
+export interface ExcelPreview {
+  sheets: ExcelSheetPreview[]
+}
+
+export type FooterSummaryMode = 'NONE' | 'SUB_TOTAL_DTO'
+
 export interface InvoiceTemplate {
   id: number
   supplierGuid: string
@@ -123,6 +135,15 @@ export interface InvoiceTemplate {
   lineSubtotalCol?: string | null
   defaultTaxRate?: number | null
   taxIncluded: boolean
+  filterRowsWithoutBarcode: boolean
+  splitMixedChineseForeignName: boolean
+  stripCurrencyFromPrice: boolean
+  skipZeroPricePalletRows: boolean
+  breakOnTaxableBase: boolean
+  productHasNewBarcode: boolean
+  skipBarcodeNotEAN13: boolean
+  footerSummaryMode: FooterSummaryMode
+  footerSummaryModeName?: string | null
   enabled: boolean
   remark?: string | null
   createdAt?: string
@@ -146,22 +167,72 @@ export interface InvoiceTemplateForm {
   lineSubtotalCol?: string
   defaultTaxRate?: number
   taxIncluded: boolean
+  filterRowsWithoutBarcode?: boolean
+  splitMixedChineseForeignName?: boolean
+  stripCurrencyFromPrice?: boolean
+  skipZeroPricePalletRows?: boolean
+  breakOnTaxableBase?: boolean
+  productHasNewBarcode?: boolean
+  skipBarcodeNotEAN13?: boolean
+  footerSummaryMode?: FooterSummaryMode
   enabled?: boolean
   remark?: string
+}
+
+export interface InvoiceCleanSummary {
+  totalQuantity: number
+  amountBeforeDiscount: number
+  discountAmount: number
+  totalAmount: number
+  taxIncluded: boolean
+  filteredCount?: number | null
+  filteredAmount?: number | null
+  remark?: string | null
+}
+
+export interface InvoiceCleanPreviewRow {
+  sourceRowIndex: number
+  barcode: string
+  chineseName?: string | null
+  foreignName?: string | null
+  quantity: number | null
+  outputPrice: number | null
+  taxRate: number | null
+  amount: number | null
+  filtered: boolean
+  filterReason?: string | null
+  filterReasonName?: string | null
 }
 
 export interface InvoiceCleanPreview {
   rowCount: number
   templateName: string
   taxIncluded: boolean
+  summary: InvoiceCleanSummary
+  rows: InvoiceCleanPreviewRow[]
+  footerParsed: boolean
+  footerAmountBeforeDiscount: number | null
+  tableAmountBeforeDiscount: number | null
+  amountMismatch: boolean
+}
+
+export interface InvoiceCleanConfirmRow {
+  barcode: string
+  foreignName: string
+  quantity: number | null
+  outputPrice: number | null
+  taxRate: number | null
+}
+
+export interface InvoiceCleanConfirmPayload {
+  supplierGuid: string
+  rows: InvoiceCleanConfirmRow[]
   summary: {
-    totalQuantity: number
-    amountBeforeDiscount: number
-    discountAmount: number
-    totalAmount: number
-    taxIncluded: boolean
-    filteredCount?: number | null
-    filteredAmount?: number | null
+    totalQuantity: number | null
+    amountBeforeDiscount: number | null
+    discountAmount: number | null
+    totalAmount: number | null
+    taxIncluded: boolean | null
     remark?: string | null
   }
 }

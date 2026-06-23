@@ -1,5 +1,5 @@
 <template>
-  <div class="page-layout">
+  <div class="page-layout talent-page">
     <div class="page-title">Talent 数据源热部署</div>
 
     <transition name="form-slide">
@@ -145,11 +145,18 @@ onMounted(loadStatus)
 
 <style scoped>
 .edit-card {
+  flex-shrink: 0;
   margin-bottom: 10px;
 }
 
 .status-card {
+  flex-shrink: 0;
   margin-top: 10px;
+}
+
+.talent-page {
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .status-header {
