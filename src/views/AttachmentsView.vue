@@ -185,6 +185,13 @@
             </span>
           </template>
         </el-table-column>
+        <el-table-column label="上传时间">
+          <template #default="{ row }">
+            <span>
+               {{ dayjs(row.uploadDate).format('YYYY-MM-DD HH:mm:ss') }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column label="清洗状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="row.cleanStatus === 'CLEANED' ? 'success' : 'info'" effect="light">
@@ -289,6 +296,8 @@ import {
 import { getInvoiceTemplatesBySupplier } from '../api/invoiceTemplate'
 import { getSupplierOptions } from '../api/talent'
 import type { Attachment, InvoiceTemplate, SupplierOption } from '../types/api'
+import dayjs from 'dayjs'
+
 
 type RowAction = 'clean' | 'import' | 'delete'
 

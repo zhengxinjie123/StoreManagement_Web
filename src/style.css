@@ -171,11 +171,6 @@ body {
   margin-top: 8px;
 }
 
-.tip-alert {
-  flex-shrink: 0;
-  margin-bottom: 0;
-  padding: 6px 10px;
-}
 
 .field-select {
   width: var(--field-width);

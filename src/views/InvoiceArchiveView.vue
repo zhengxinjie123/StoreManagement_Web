@@ -23,6 +23,16 @@
               {{ row.rowType === 'archive' ? formatQuantity(row.totalQuantity) : '-' }}
             </template>
           </el-table-column>
+          <el-table-column label="折前金额" width="100" align="right">
+            <template #default="{ row }">
+              {{ row.rowType === 'archive' ? formatMoney(row.amountBeforeDiscount) : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="折扣金额" width="100" align="right">
+            <template #default="{ row }">
+              {{ row.rowType === 'archive' ? formatMoney(row.discountAmount) : '-' }}
+            </template>
+          </el-table-column>
           <el-table-column label="总金额" width="100" align="right">
             <template #default="{ row }">
               {{ row.rowType === 'archive' ? formatMoney(row.totalAmount) : '-' }}
@@ -38,6 +48,11 @@
           <el-table-column label="清洗行数" width="90" align="center">
             <template #default="{ row }">
               {{ row.rowType === 'archive' ? row.rowCount : '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="备注" width="220" align="center">
+            <template #default="{ row }">
+              {{ row.rowType === 'archive' ? formatLongText(row.remark) : '-' }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="120" align="center">
@@ -255,6 +270,13 @@ const loadSuppliers = async (options?: { preserveExpand?: boolean }) => {
     loading.value = false
   }
 }
+
+const formatLongText = (cellValue: string | null | undefined) => {
+  if (!cellValue) return '-'
+  if (cellValue.length <= 25) return cellValue
+  return cellValue.substring(0, 25) + '...'
+}
+
 
 onMounted(async () => {
   await loadSuppliers()
