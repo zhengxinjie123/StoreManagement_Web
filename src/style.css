@@ -1,0 +1,229 @@
+:root {
+  --aside-width: 192px;
+  --header-height: 44px;
+  --main-padding: 12px;
+  --page-gap: 10px;
+  --card-padding: 12px;
+  --page-title-size: 16px;
+  --field-width: 280px;
+  --el-font-size-base: 13px;
+  --el-font-size-small: 12px;
+  --el-font-size-large: 14px;
+  --el-component-size: 30px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #f5f7fb;
+  font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+}
+
+#app {
+  height: 100%;
+}
+
+.app-shell {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-aside {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: #111827;
+}
+
+.app-aside .el-menu {
+  flex: 1;
+  overflow: hidden;
+  border-right: none;
+}
+
+.app-aside .el-menu-item {
+  height: 42px;
+  line-height: 42px;
+  font-size: 13px;
+}
+
+.app-aside .el-menu-item .el-icon {
+  font-size: 14px;
+}
+
+.app-body {
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.brand {
+  flex-shrink: 0;
+  height: var(--header-height);
+  line-height: var(--header-height);
+  padding: 0 12px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: var(--header-height);
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.app-main {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  padding: var(--main-padding);
+  overflow: hidden;
+}
+
+.page-container {
+  height: 100%;
+  overflow: hidden;
+}
+
+.page-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--page-gap);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page-title {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: var(--page-title-size);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.page-card {
+  border-radius: 6px;
+}
+
+.page-card--static :deep(.el-card__body) {
+  padding: var(--card-padding);
+}
+
+.page-card--static {
+  flex-shrink: 0;
+}
+
+.page-card--grow {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-card--grow :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--card-padding);
+  overflow: hidden;
+}
+
+.table-shell {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page-toolbar,
+.filter-bar,
+.toolbar {
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+
+.pagination {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.tip-alert {
+  flex-shrink: 0;
+  margin-bottom: 0;
+  padding: 6px 10px;
+}
+
+.field-select {
+  width: var(--field-width);
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.el-table {
+  font-size: 13px;
+}
+
+.el-table .el-table__cell {
+  padding: 6px 0;
+}
+
+.el-table .cell {
+  padding: 0 10px;
+  line-height: 1.4;
+}
+
+.el-table th.el-table__cell {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.el-tag {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.el-descriptions__label,
+.el-descriptions__content {
+  font-size: 13px !important;
+}
+
+@media (max-width: 1280px) {
+  :root {
+    --aside-width: 180px;
+    --main-padding: 10px;
+    --page-gap: 8px;
+    --card-padding: 10px;
+    --field-width: 260px;
+  }
+}
