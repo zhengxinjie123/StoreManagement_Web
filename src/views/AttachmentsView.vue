@@ -895,12 +895,12 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   margin: 0 0 0 8px;
-  max-width: 220px;
+  min-width: 220px;
 }
 
 .inline-upload :deep(.el-upload-list__item) {
   margin: 0;
-  max-width: 220px;
+  min-width: 220px;
 }
 
 .inline-upload :deep(.el-upload-list__item-name) {
