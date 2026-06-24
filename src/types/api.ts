@@ -94,6 +94,9 @@ export interface InvoiceArchive {
   taxIncluded: boolean | null
   createdAt: string
   remark?: string | null
+  ownerType?: 'SELF' | 'PARENT'
+  ownerTypeCode?: number | null
+  ownerTypeName?: string | null
   deletable: boolean
 }
 

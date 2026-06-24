@@ -142,14 +142,14 @@
             :loading="batchImporting"
             @click="batchImport"
           >
-            批量导入
+            {{ importActionLabel('批量') }}
           </el-button>
           <el-button
             type="success"
             :loading="oneClickImporting"
             @click="oneClickImport"
           >
-            一键导入
+            {{ importActionLabel('一键') }}
           </el-button>
         </div>
       </div>
@@ -206,13 +206,13 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" align="center" fixed="right">
+        <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
             <div class="table-actions">
               <el-button link type="primary" :loading="cleaningUuid === row.uuid" @click="clean(row)">
                 清洗
               </el-button>
-              <el-button link type="success" @click="importToTalent(row)">导入</el-button>
+              <el-button link type="success" @click="importToTalent(row)">{{ rowImportActionLabel }}</el-button>
               <el-button link type="danger" :disabled="!row.deletable" @click="remove(row)">删除</el-button>
             </div>
           </template>
@@ -418,11 +418,13 @@ import {
   type AttachmentOwnerType,
   attachmentDownloadUrl,
   batchUploadAttachments,
+  cleanAttachment,
   confirmCleanAttachment,
   deleteAttachment,
   fetchAllAttachments,
   getAttachments,
   matchSuppliersByFileName,
+  uploadAttachmentToGoogleDrive,
   uploadAttachment,
 } from '../api/attachments'
 import { getInvoiceTemplatesBySupplier, previewInvoiceTemplate } from '../api/invoiceTemplate'
@@ -469,6 +471,7 @@ const previewLoading = ref(false)
 const confirmArchiving = ref(false)
 const previewData = ref<InvoiceCleanPreview | null>(null)
 const previewRows = ref<InvoiceCleanPreviewRow[]>([])
+const excludedPreviewRows = ref<InvoiceCleanPreviewRow[]>([])
 const previewTarget = ref<Attachment | null>(null)
 const previewTemplateId = ref<number | null>(null)
 const previewTemplateDialogVisible = ref(false)
@@ -496,6 +499,12 @@ const query = reactive({
 })
 
 const ownerTabLabel = computed(() => (activeOwnerTab.value === 'SELF' ? '自己' : '父母'))
+const rowImportActionLabel = computed(() =>
+  activeOwnerTab.value === 'PARENT' ? '上传云端' : '导入',
+)
+
+const importActionLabel = (prefix: string) =>
+  activeOwnerTab.value === 'PARENT' ? `${prefix}上传谷歌云端` : `${prefix}导入`
 
 const isExcelAttachment = (row: Attachment) =>
   ['xls', 'xlsx'].includes(row.extensionName.toLowerCase())
@@ -774,6 +783,7 @@ const runClean = async (row: Attachment, templateId: number): Promise<CleanRunRe
   previewTemplateId.value = templateId
   previewData.value = null
   previewRows.value = []
+  excludedPreviewRows.value = []
   cleaningUuid.value = row.uuid
   try {
     const data = await previewInvoiceTemplate(templateId, row.uuid, row.supplierGuid)
@@ -786,7 +796,10 @@ const runClean = async (row: Attachment, templateId: number): Promise<CleanRunRe
       return 'paused'
     }
 
-    await archiveCleanResult(row, data, rows, { silent: false })
+    const archive = await cleanAttachment(row.uuid, row.supplierGuid, templateId)
+    ElMessage.success(`清洗成功，归档文件：${archive.fileName}.${archive.extensionName}`)
+    row.cleanStatus = 'CLEANED'
+    row.cleanStatusName = '已清洗'
     return 'archived'
   } catch {
     pendingCleanQueue.value = []
@@ -807,6 +820,7 @@ const excludePreviewRow = (row: InvoiceCleanPreviewRow) => {
     return
   }
   previewRows.value.splice(index, 1)
+  excludedPreviewRows.value.push({ ...row })
   ElMessage.info(`已将原发票第 ${row.sourceRowIndex} 行从本次归档中排除`)
 }
 
@@ -891,6 +905,15 @@ const totalAmountOf = (data: InvoiceCleanPreview, rows: InvoiceCleanPreviewRow[]
   return amountBeforeDiscountOf(rows) - toNumber(data.summary.discountAmount)
 }
 
+const manualArchiveRemark = () => {
+  if (!excludedPreviewRows.value.length) {
+    return null
+  }
+  return excludedPreviewRows.value
+    .map((row) => `原发票第 ${row.sourceRowIndex} 行不归档，原因：${row.filterReasonName || '已过滤'}`)
+    .join('；')
+}
+
 const archiveCleanResult = async (
   target: Attachment,
   data: InvoiceCleanPreview,
@@ -912,7 +935,7 @@ const archiveCleanResult = async (
       discountAmount: discountAmountOf(data, rows),
       totalAmount: totalAmountOf(data, rows),
       taxIncluded: data.taxIncluded,
-      remark: data.summary.remark ?? null,
+      remark: manualArchiveRemark(),
     },
   })
   if (!options?.silent) {
@@ -926,6 +949,7 @@ const cancelPreviewClean = () => {
   previewVisible.value = false
   previewData.value = null
   previewRows.value = []
+  excludedPreviewRows.value = []
   previewTarget.value = null
   pendingCleanQueue.value = []
 }
@@ -962,6 +986,7 @@ const confirmArchivePreview = async () => {
   try {
     await archiveCleanResult(target, data, archivePreviewRows.value)
     previewVisible.value = false
+    excludedPreviewRows.value = []
     if (pendingCleanQueue.value.length > 0) {
       await processNextClean()
       return
@@ -1091,9 +1116,18 @@ const confirmClean = async () => {
 const importToTalent = async (row: Attachment, options?: { silent?: boolean }): Promise<boolean> => {
   if (row.importStatus === 'SUCCESS') {
     if (!options?.silent) {
-      ElMessage.warning(`「${fullFilename(row)}」已导入成功，无需重复导入`)
+      const actionName = activeOwnerTab.value === 'PARENT' ? '上传云端' : '导入'
+      ElMessage.warning(`「${fullFilename(row)}」已${actionName}成功，无需重复${actionName}`)
     }
     return false
+  }
+  if (activeOwnerTab.value === 'PARENT') {
+    await uploadAttachmentToGoogleDrive(row.uuid)
+    if (!options?.silent) {
+      ElMessage.success(`「${fullFilename(row)}」已上传谷歌云端`)
+      await loadAttachments()
+    }
+    return true
   }
   if (!options?.silent) {
     ElMessage.info(`导入功能待后端实现：${row.fileName}`)
@@ -1119,14 +1153,14 @@ const importRows = async (rows: Attachment[]) => {
   }
   await loadAttachments()
   if (successCount > 0) {
-    ElMessage.success(`导入完成，共 ${successCount} 个`)
+    ElMessage.success(`${activeOwnerTab.value === 'PARENT' ? '上传云端' : '导入'}完成，共 ${successCount} 个`)
     return
   }
   if (skipCount === rows.length) {
-    ElMessage.warning('所选发票均已导入成功')
+    ElMessage.warning(`所选发票均已${activeOwnerTab.value === 'PARENT' ? '上传云端' : '导入'}成功`)
     return
   }
-  ElMessage.info(`导入功能待后端实现，已处理 ${rows.length - skipCount} 个未导入发票`)
+  ElMessage.info(`${activeOwnerTab.value === 'PARENT' ? '上传云端' : '导入功能待后端实现'}，已处理 ${rows.length - skipCount} 个未处理发票`)
 }
 
 const remove = async (row: Attachment) => {

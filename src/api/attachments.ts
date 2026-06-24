@@ -107,3 +107,9 @@ export const confirmCleanAttachment = (uuid: string, payload: InvoiceCleanConfir
     method: 'POST',
     data: payload,
   })
+
+export const uploadAttachmentToGoogleDrive = (uuid: string) =>
+  request<InvoiceArchive>({
+    url: `/importAttachment/${uuid}/upload-google-drive`,
+    method: 'POST',
+  })
