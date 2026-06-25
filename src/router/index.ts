@@ -3,6 +3,7 @@ import TalentDataSourceView from '../views/TalentDataSourceView.vue'
 import AttachmentsView from '../views/AttachmentsView.vue'
 import InvoiceArchiveView from '../views/InvoiceArchiveView.vue'
 import InvoiceTemplateView from '../views/InvoiceTemplateView.vue'
+import AppConfigView from '../views/AppConfigView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -12,6 +13,7 @@ const router = createRouter({
     { path: '/attachments', component: AttachmentsView },
     { path: '/invoice-templates', component: InvoiceTemplateView },
     { path: '/invoice-archives', component: InvoiceArchiveView },
+    { path: '/app-config', component: AppConfigView },
   ],
 })
 

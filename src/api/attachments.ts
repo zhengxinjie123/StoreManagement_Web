@@ -6,6 +6,7 @@ import type {
   InvoiceArchive,
   InvoiceCleanConfirmPayload,
   PageResponse,
+  TalentPurchaseImportWorkflow,
 } from '../types/api'
 
 export type AttachmentOwnerType = 'SELF' | 'PARENT'
@@ -111,5 +112,11 @@ export const confirmCleanAttachment = (uuid: string, payload: InvoiceCleanConfir
 export const uploadAttachmentToGoogleDrive = (uuid: string) =>
   request<InvoiceArchive>({
     url: `/importAttachment/${uuid}/upload-google-drive`,
+    method: 'POST',
+  })
+
+export const importAttachmentToTalent = (uuid: string) =>
+  request<TalentPurchaseImportWorkflow>({
+    url: `/importAttachment/${uuid}/import-talent`,
     method: 'POST',
   })

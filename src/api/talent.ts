@@ -1,5 +1,5 @@
 import { request } from './http'
-import type { DataSourceForm, DataSourceStatus, SupplierOption } from '../types/api'
+import type { DataSourceForm, DataSourceStatus, SupplierOption, TalentReferenceOption } from '../types/api'
 
 const baseUrl = '/talentOpos/dataSource'
 
@@ -14,3 +14,9 @@ export const verifyDataSource = () =>
 
 export const getSupplierOptions = () =>
   request<SupplierOption[]>({ url: '/talentOpos/supplier/getList', method: 'GET' })
+
+export const getTalentReferenceOptionMap = () =>
+  request<Record<string, TalentReferenceOption[]>>({
+    url: '/talentOpos/reference/getOptionMap',
+    method: 'GET',
+  })

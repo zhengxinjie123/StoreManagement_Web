@@ -25,6 +25,10 @@
           <el-icon><FolderOpened /></el-icon>
           <span>归档发票</span>
         </el-menu-item>
+        <el-menu-item index="/app-config">
+          <el-icon><Setting /></el-icon>
+          <span>系统参数</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -41,7 +45,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Connection, Document, FolderOpened, Grid } from '@element-plus/icons-vue'
+import { Connection, Document, FolderOpened, Grid, Setting } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const activeMenu = computed(() => route.path)

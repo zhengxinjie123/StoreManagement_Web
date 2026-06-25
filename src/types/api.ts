@@ -30,6 +30,53 @@ export interface DataSourceStatus {
   message: string
 }
 
+export type AppConfigValueType = 'GROUP' | 'STRING' | 'INTEGER' | 'DECIMAL' | 'BOOLEAN' | 'PASSWORD'
+
+export type TalentReferenceType =
+  | 'PRODUCT_TYPE'
+  | 'SUPPLIER'
+  | 'PRODUCT_UNIT'
+  | 'PRODUCT_UNIT_NAME'
+  | 'DEPOT'
+  | 'LABEL_STYLE'
+  | 'PRODUCT_LABEL_STYLE'
+  | 'EMPLOYEE'
+  | 'USER'
+  | 'SUPPLIER_TYPE'
+
+export interface TalentReferenceOption {
+  value: string
+  label: string
+  code?: string | null
+}
+
+export interface AppConfig {
+  id: number
+  parentId?: number | null
+  configKey: string
+  configValue?: string | null
+  valueType: AppConfigValueType
+  optionSource?: TalentReferenceType | null
+  label: string
+  description?: string | null
+  sortOrder?: number | null
+  systemFlag?: boolean | null
+  createdAt?: string
+  updatedAt?: string
+  children?: AppConfig[]
+}
+
+export interface AppConfigForm {
+  parentId?: number | null
+  configKey: string
+  configValue?: string | null
+  valueType: AppConfigValueType
+  label: string
+  description?: string | null
+  sortOrder?: number | null
+  systemFlag?: boolean | null
+}
+
 export interface SupplierOption {
   guid: string
   chineseName: string
@@ -98,6 +145,20 @@ export interface InvoiceArchive {
   ownerTypeCode?: number | null
   ownerTypeName?: string | null
   deletable: boolean
+}
+
+export interface PurchaseImportResult {
+  purchaseNo: string
+  purchaseGuid: string
+  lineCount: number
+  newProductCount: number
+  existingProductCount: number
+}
+
+export interface TalentPurchaseImportWorkflow {
+  cleanedBeforeImport: boolean
+  archive: InvoiceArchive
+  purchase: PurchaseImportResult
 }
 
 export interface InvoiceArchiveSupplier {

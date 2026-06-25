@@ -212,7 +212,14 @@
               <el-button link type="primary" :loading="cleaningUuid === row.uuid" @click="clean(row)">
                 清洗
               </el-button>
-              <el-button link type="success" @click="importToTalent(row)">{{ rowImportActionLabel }}</el-button>
+              <el-button
+                link
+                type="success"
+                :loading="importingUuid === row.uuid"
+                @click="importToTalent(row)"
+              >
+                {{ rowImportActionLabel }}
+              </el-button>
               <el-button link type="danger" :disabled="!row.deletable" @click="remove(row)">删除</el-button>
             </div>
           </template>
@@ -423,6 +430,7 @@ import {
   deleteAttachment,
   fetchAllAttachments,
   getAttachments,
+  importAttachmentToTalent,
   matchSuppliersByFileName,
   uploadAttachmentToGoogleDrive,
   uploadAttachment,
@@ -447,6 +455,7 @@ const batchInputRef = ref<HTMLInputElement>()
 const selectedFile = ref<File>()
 const uploading = ref(false)
 const cleaningUuid = ref('')
+const importingUuid = ref('')
 const batchCleaning = ref(false)
 const oneClickCleaning = ref(false)
 const batchImporting = ref(false)
@@ -458,6 +467,8 @@ const cleanTemplateId = ref<number | null>(null)
 const cleanTemplateOptions = ref<InvoiceTemplate[]>([])
 const cleanTarget = ref<Attachment | null>(null)
 const cleanQueue = ref<Attachment[]>([])
+const cleanDialogMode = ref<'clean' | 'import'>('clean')
+const importAfterArchive = ref(false)
 const selectedRows = ref<Attachment[]>([])
 const activeOwnerTab = ref<AttachmentOwnerType>('SELF')
 const loading = ref(false)
@@ -712,6 +723,8 @@ const cancelCleanTemplate = () => {
   previewTarget.value = null
   cleanQueue.value = []
   pendingCleanQueue.value = []
+  cleanDialogMode.value = 'clean'
+  importAfterArchive.value = false
 }
 
 const startCleanQueue = async (rows: Attachment[]) => {
@@ -754,6 +767,7 @@ const processNextClean = async () => {
   }
 
   cleanQueue.value = [row, ...pendingCleanQueue.value]
+  cleanDialogMode.value = 'clean'
   cleanTarget.value = row
   previewTarget.value = row
   cleanTemplateOptions.value = templates
@@ -987,6 +1001,12 @@ const confirmArchivePreview = async () => {
     await archiveCleanResult(target, data, archivePreviewRows.value)
     previewVisible.value = false
     excludedPreviewRows.value = []
+    if (importAfterArchive.value) {
+      importAfterArchive.value = false
+      await runTalentImport(target)
+      await loadAttachments()
+      return
+    }
     if (pendingCleanQueue.value.length > 0) {
       await processNextClean()
       return
@@ -1103,36 +1123,120 @@ const itemLabel = (item: InvoiceTemplate) => {
 const confirmClean = async () => {
   if (!cleanTarget.value || !cleanTemplateId.value) return
   const target = cleanTarget.value
+  const mode = cleanDialogMode.value
   cleanDialogVisible.value = false
   cleanTarget.value = null
   cleanQueue.value = []
 
   const result = await runClean(target, cleanTemplateId.value)
+  if (mode === 'import') {
+    if (result === 'archived') {
+      await runTalentImport(target)
+      await loadAttachments()
+    } else if (result === 'paused') {
+      importAfterArchive.value = true
+    }
+    cleanDialogMode.value = 'clean'
+    return
+  }
   if (result === 'archived') {
     await processNextClean()
   }
 }
 
-const importToTalent = async (row: Attachment, options?: { silent?: boolean }): Promise<boolean> => {
+type ImportRunResult = 'success' | 'skipped' | 'paused'
+
+const runTalentImport = async (row: Attachment, options?: { silent?: boolean }): Promise<boolean> => {
+  importingUuid.value = row.uuid
+  try {
+    const result = await importAttachmentToTalent(row.uuid)
+    row.importStatus = 'SUCCESS'
+    row.importStatusName = '导入成功'
+    row.deletable = false
+    if (!options?.silent) {
+      ElMessage.success(`「${fullFilename(row)}」已导入 TALENTOPOS，采购单：${result.purchase.purchaseNo}`)
+    }
+    return true
+  } finally {
+    importingUuid.value = ''
+  }
+}
+
+const ensureCleanedBeforeTalentImport = async (
+  row: Attachment,
+  options?: { silent?: boolean },
+): Promise<'ready' | 'paused' | 'failed'> => {
+  if (row.cleanStatus === 'CLEANED') {
+    return 'ready'
+  }
+  if (!isExcelAttachment(row)) {
+    if (!options?.silent) {
+      ElMessage.warning('仅支持已清洗归档的 Excel 发票导入 TALENTOPOS')
+    }
+    return 'failed'
+  }
+
+  let templates: InvoiceTemplate[] = []
+  try {
+    templates = await getInvoiceTemplatesBySupplier(row.supplierGuid)
+  } catch {
+    return 'failed'
+  }
+  if (templates.length === 0) {
+    ElMessage.warning(`「${fullFilename(row)}」的供应商尚未配置清洗模板`)
+    return 'failed'
+  }
+
+  if (templates.length === 1) {
+    const result = await runClean(row, templates[0].id)
+    if (result === 'archived') {
+      return 'ready'
+    }
+    if (result === 'paused') {
+      importAfterArchive.value = true
+      return 'paused'
+    }
+    return 'failed'
+  }
+
+  cleanDialogMode.value = 'import'
+  cleanQueue.value = [row]
+  cleanTarget.value = row
+  previewTarget.value = row
+  cleanTemplateOptions.value = templates
+  previewTemplateOptions.value = templates
+  cleanTemplateId.value = templates[0].id
+  previewTemplateId.value = templates[0].id
+  cleanDialogVisible.value = true
+  return 'paused'
+}
+
+const importToTalent = async (row: Attachment, options?: { silent?: boolean }): Promise<ImportRunResult> => {
   if (row.importStatus === 'SUCCESS') {
     if (!options?.silent) {
-      const actionName = activeOwnerTab.value === 'PARENT' ? '上传云端' : '导入'
+      const actionName = row.ownerType === 'PARENT' ? '上传云端' : '导入'
       ElMessage.warning(`「${fullFilename(row)}」已${actionName}成功，无需重复${actionName}`)
     }
-    return false
+    return 'skipped'
   }
-  if (activeOwnerTab.value === 'PARENT') {
+  if (row.ownerType === 'PARENT') {
     await uploadAttachmentToGoogleDrive(row.uuid)
     if (!options?.silent) {
       ElMessage.success(`「${fullFilename(row)}」已上传谷歌云端`)
       await loadAttachments()
     }
-    return true
+    return 'success'
   }
-  if (!options?.silent) {
-    ElMessage.info(`导入功能待后端实现：${row.fileName}`)
+
+  const cleanResult = await ensureCleanedBeforeTalentImport(row, options)
+  if (cleanResult === 'paused') {
+    return 'paused'
   }
-  return false
+  if (cleanResult !== 'ready') {
+    return 'skipped'
+  }
+
+  return (await runTalentImport(row, options)) ? 'success' : 'skipped'
 }
 
 const importRows = async (rows: Attachment[]) => {
@@ -1146,9 +1250,15 @@ const importRows = async (rows: Attachment[]) => {
       skipCount += 1
       continue
     }
-    const ok = await importToTalent(row, { silent: true })
-    if (ok) {
+    const result = await importToTalent(row, { silent: true })
+    if (result === 'paused') {
+      ElMessage.info('导入已暂停，请先完成清洗预览归档')
+      return
+    }
+    if (result === 'success') {
       successCount += 1
+    } else {
+      skipCount += 1
     }
   }
   await loadAttachments()
